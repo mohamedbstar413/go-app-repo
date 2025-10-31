@@ -43,7 +43,6 @@ spec:
                 container('git') {
                     checkout scm
                     script {
-                        sh 'git config --global --add safe.directory "$PWD"'
                         env.GIT_COMMIT_SHORT = sh(
                             script: "git rev-parse --short HEAD",
                             returnStdout: true
