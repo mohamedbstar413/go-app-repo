@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-proxy
+spec:
+  containers:
+    - name: nginx-proxy
+      image: nginx
+
+      ports:
+        - containerPort: 8080
+      volumeMounts:
+        - mountPath: /etc/nginx/nginx.conf
+          name: nginx-conf
+        - mountPath: /usr/share/nginx/html/index.html
+          name: nginx-index
+        - name: nginx-certs
+          mountPath: /etc/nginx/ssl
+          readOnly: true
+      
+  volumes:
+    - name: nginx-conf
+      hostPath:
+        path: /nginx-conf/nginx.conf
+    - name: nginx-index
+      hostPath:
+        path: /nginx-index/index.html
+    - name: nginx-certs
+      secret:
+        secretName: nginx-tls

@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: back-deploy
+
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: back
+  template:
+    metadata:
+      name: back-pod
+      labels:
+        app: back
+    spec:
+      containers:
+        - name: back-container
+          image: bstar999/senior-go
+          volumeMounts:
+            - mountPath: /run/secrets/db-password
+              name: secret-volume
+          ports:
+            - containerPort: 8000
+      volumes:
+        - name: secret-volume
+          hostPath:
+            path: /root/secret/db-password
