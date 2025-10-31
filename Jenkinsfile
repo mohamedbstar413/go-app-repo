@@ -425,6 +425,7 @@ EOF
         }
         always {
             echo "Pipeline execution finished."
+            
         }
     }
 }
