@@ -320,15 +320,108 @@ spec:
                 }
             }
         }
+        stage('Smoke Test') {
+      agent {
+        kubernetes {
+          label 'smoke-test'
+          defaultContainer 'curl'
+          yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: smoke-test
+spec:
+  containers:
+  - name: curl
+    image: curlimages/curl:8.10.1
+    command:
+      - cat
+    tty: true
+  restartPolicy: Never
+"""
+        }
+      }
+
+      steps {
+        container('curl') {
+          echo 'Running smoke test inside container...'
+          sh '''
+            set -e
+            echo "Checking service health..."
+            if ! curl -fs https://nginx-svc.default.svc.cluster.local/; then
+              echo "Smoke test failed!"
+              exit 1
+            fi
+            echo "Smoke test passed!"
+          '''
+        }
+      }
+    }
+    stage('Send Email') {
+      agent {
+        kubernetes {
+          label 'email-sender'
+          defaultContainer 'mailer'
+          yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: email-sender
+spec:
+  containers:
+  - name: mailer
+    image: alpine:3.20
+    command: ['cat']
+    tty: true
+  restartPolicy: Never
+"""
+        }
+      }
+      environment {
+        SMTP_SERVER = 'smtp.gmail.com'
+        SMTP_PORT   = '587'
+        TO_EMAIL    = 'mabdelsattar413@gmail.com'
+      }
+      steps {
+        container('mailer') {
+            withCredentials([usernamePassword(
+        credentialsId: 'gmail',
+        usernameVariable: 'USER',
+        passwordVariable: 'PASS'
+      )]){
+        sh '''
+            apk add --no-cache msmtp mailx
+            cat > ~/.msmtprc <<EOF
+account default
+host $SMTP_SERVER
+port $SMTP_PORT
+auth on
+user $USER
+password $PASS
+tls on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+from jenkins@example.com
+EOF
+            chmod 600 ~/.msmtprc
+
+            echo "Deployment succeeded at $(date)" | mailx -s "✅ Jenkins Pipeline Success" $TO_EMAIL
+          '''
+      }
+        }
+
+      }
+    }
     }
     
     post {
         success {
-            echo "✅ Pipeline completed successfully!"
+            echo "Pipeline completed successfully!"
             echo "Image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
         }
         failure {
-            echo "❌ Pipeline failed!"
+            echo "Pipeline failed!"
         }
         always {
             echo "Pipeline execution finished."
