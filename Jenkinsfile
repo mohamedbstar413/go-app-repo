@@ -54,7 +54,6 @@ spec:
                 }
             }
         }
-        
         stage('Build & Push Docker Image') {
             agent {
                 kubernetes {
@@ -91,21 +90,26 @@ spec:
                             usernameVariable: 'DOCKER_USER',
                             passwordVariable: 'DOCKER_PASS'
                         )]) {
-                            // Build the image path with actual username
                             def dockerImage = "${DOCKER_REGISTRY}/${DOCKER_USER}/${APP_NAME}"
                             
                             sh """
-                                echo "Creating Docker config..."
+                                echo "Creating Docker config for authentication..."
+                                
+                                # Create base64 encoded auth string
+                                AUTH=\$(echo -n "${DOCKER_USER}:${DOCKER_PASS}" | base64 | tr -d '\n')
+                                
+                                # Create proper Docker config.json
                                 cat > /kaniko/.docker/config.json <<EOF
 {
   "auths": {
-    "${DOCKER_REGISTRY}": {
-      "username": "${DOCKER_USER}",
-      "password": "${DOCKER_PASS}"
+    "https://index.docker.io/v1/": {
+      "auth": "\${AUTH}"
     }
   }
 }
 EOF
+                                
+                                echo "Docker config created successfully"
                                 
                                 echo "Building and pushing Docker image..."
                                 echo "Image: ${dockerImage}:${IMAGE_TAG}"
@@ -117,21 +121,19 @@ EOF
                                     --destination ${dockerImage}:latest \
                                     --cache=true \
                                     --compressed-caching=false \
-                                    --skip-tls-verify-registry=${DOCKER_REGISTRY}
+                                    --verbosity=info
                                 
                                 echo "✅ Image pushed successfully!"
                                 echo "  ${dockerImage}:${IMAGE_TAG}"
                                 echo "  ${dockerImage}:latest"
                             """
                             
-                            // Store for later stages
                             env.DOCKER_IMAGE = dockerImage
                         }
                     }
                 }
             }
         }
-
         stage('Create Helm Chart') {
             agent {
                 kubernetes {
