@@ -4,14 +4,13 @@ pipeline {
     environment {
         APP_NAME = 'senior-go'
         DOCKER_REGISTRY = 'docker.io'
-        DOCKER_IMAGE = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${APP_NAME}"
+        DOCKER_USERNAME_PLACEHOLDER = 'bstar999'  // Will be overridden by credentials
         VERSION = "${env.BUILD_NUMBER}"
         GO111MODULE = 'on'
         CGO_ENABLED = '0'
         GOOS = 'linux'
         GOARCH = 'amd64'
-        // Deployment namespace
-        DEPLOY_NAMESPACE = 'default'  // or 'default', 'staging', etc.
+        DEPLOY_NAMESPACE = 'default'
     }
     
     stages {
@@ -26,6 +25,8 @@ metadata:
     jenkins: agent
 spec:
   serviceAccount: jenkins
+  securityContext:
+    fsGroup: 1000
   containers:
   - name: git
     image: alpine/git:latest
@@ -42,16 +43,18 @@ spec:
                 container('git') {
                     checkout scm
                     script {
+                        sh 'git config --global --add safe.directory "$PWD"'
                         env.GIT_COMMIT_SHORT = sh(
                             script: "git rev-parse --short HEAD",
                             returnStdout: true
                         ).trim()
                         env.IMAGE_TAG = "${VERSION}-${GIT_COMMIT_SHORT}"
+                        echo "Git Commit: ${env.GIT_COMMIT_SHORT}"
+                        echo "Image Tag: ${env.IMAGE_TAG}"
                     }
                 }
             }
         }
-        
         
         stage('Build & Push Docker Image') {
             agent {
@@ -86,32 +89,150 @@ spec:
                     script {
                         withCredentials([usernamePassword(
                             credentialsId: 'dockerhub',
-                            usernameVariable: 'DOCKER_USERNAME',
-                            passwordVariable: 'DOCKER_PASSWORD'
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
                         )]) {
-                            sh '''
+                            // Build the image path with actual username
+                            def dockerImage = "${DOCKER_REGISTRY}/${DOCKER_USER}/${APP_NAME}"
+                            
+                            sh """
                                 echo "Creating Docker config..."
-                                echo "{\\"auths\\":{\\"${DOCKER_REGISTRY}\\":{\\"username\\":\\"${DOCKER_USERNAME}\\",\\"password\\":\\"${DOCKER_PASSWORD}\\"}}}" > /kaniko/.docker/config.json
+                                cat > /kaniko/.docker/config.json <<EOF
+{
+  "auths": {
+    "${DOCKER_REGISTRY}": {
+      "username": "${DOCKER_USER}",
+      "password": "${DOCKER_PASS}"
+    }
+  }
+}
+EOF
                                 
-                                echo "Building and pushing Docker image with Kaniko..."
+                                echo "Building and pushing Docker image..."
+                                echo "Image: ${dockerImage}:${IMAGE_TAG}"
+                                
                                 /kaniko/executor \
                                     --context ${WORKSPACE} \
                                     --dockerfile ${WORKSPACE}/Dockerfile \
-                                    --destination ${DOCKER_IMAGE}:${IMAGE_TAG} \
-                                    --destination ${DOCKER_IMAGE}:latest \
+                                    --destination ${dockerImage}:${IMAGE_TAG} \
+                                    --destination ${dockerImage}:latest \
                                     --cache=true \
-                                    --compressed-caching=false
+                                    --compressed-caching=false \
+                                    --skip-tls-verify-registry=${DOCKER_REGISTRY}
                                 
-                                echo "Image pushed: ${DOCKER_IMAGE}:${IMAGE_TAG}"
-                            '''
+                                echo "✅ Image pushed successfully!"
+                                echo "  ${dockerImage}:${IMAGE_TAG}"
+                                echo "  ${dockerImage}:latest"
+                            """
+                            
+                            // Store for later stages
+                            env.DOCKER_IMAGE = dockerImage
                         }
                     }
                 }
             }
         }
-        
 
-        /*stage('Deploy to Kubernetes') {
+        stage('Create Helm Chart') {
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccount: jenkins
+  containers:
+  - name: helm
+    image: alpine/helm:3.13.1
+    command: [cat]
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('helm') {
+                    sh '''
+                        echo "Creating Helm chart from YAML files..."
+                        
+                        # Create chart structure
+                        helm create ${APP_NAME}
+                        rm -rf ${APP_NAME}/templates/*
+                        
+                        # Copy your YAML files (adjust path based on your repo structure)
+                        if [ -d "k8s" ]; then
+                            echo "Copying from k8s/ directory..."
+                            cp k8s/*.yaml ${APP_NAME}/templates/
+                        elif [ -d "kubernetes" ]; then
+                            echo "Copying from kubernetes/ directory..."
+                            cp kubernetes/*.yaml ${APP_NAME}/templates/
+                        elif [ -d "manifests" ]; then
+                            echo "Copying from manifests/ directory..."
+                            cp manifests/*.yaml ${APP_NAME}/templates/
+                        else
+                            echo "No k8s directory found, looking for YAML files in root..."
+                            find . -maxdepth 1 -name "*.yaml" -o -name "*.yml" | grep -v "Chart.yaml" | xargs -I {} cp {} ${APP_NAME}/templates/ || true
+                        fi
+                        
+                        # Update Chart.yaml
+                        cat > ${APP_NAME}/Chart.yaml <<EOF
+apiVersion: v2
+name: ${APP_NAME}
+description: A Helm chart for ${APP_NAME} Go application
+type: application
+version: 1.0.${BUILD_NUMBER}
+appVersion: "${IMAGE_TAG}"
+maintainers:
+  - name: Jenkins
+    email: jenkins@example.com
+EOF
+                        
+                        # Create values.yaml
+                        cat > ${APP_NAME}/values.yaml <<EOF
+replicaCount: 2
+
+image:
+  repository: ${DOCKER_IMAGE}
+  tag: ${IMAGE_TAG}
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+EOF
+                        
+                        # Show what we packaged
+                        echo "=== Helm Chart Contents ==="
+                        ls -la ${APP_NAME}/templates/
+                        
+                        # Validate and package
+                        helm lint ${APP_NAME}
+                        helm package ${APP_NAME}
+                        
+                        echo "✅ Helm chart created successfully!"
+                        ls -la *.tgz
+                    '''
+                    
+                    archiveArtifacts artifacts: '*.tgz', fingerprint: true
+                }
+            }
+        }
+
+        stage('Deploy Helm Chart') {
             when {
                 branch 'main'
             }
@@ -120,16 +241,58 @@ spec:
                     yaml """
 apiVersion: v1
 kind: Pod
-metadata:
-  labels:
-    jenkins: agent
+spec:
+  serviceAccount: jenkins
+  containers:
+  - name: helm
+    image: alpine/helm:3.13.1
+    command: [cat]
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('helm') {
+                    sh '''
+                        echo "Deploying Helm chart to Kubernetes..."
+                        
+                        # Deploy or upgrade the release
+                        helm upgrade --install ${APP_NAME} \
+                            ./${APP_NAME}-1.0.${BUILD_NUMBER}.tgz \
+                            --namespace ${DEPLOY_NAMESPACE} \
+                            --create-namespace \
+                            --wait \
+                            --timeout 5m \
+                            --set image.tag=${IMAGE_TAG} \
+                            --set image.repository=${DOCKER_IMAGE} \
+                            --atomic \
+                            --cleanup-on-fail
+                        
+                        echo "✅ Deployment successful!"
+                        
+                        # Show release info
+                        helm list -n ${DEPLOY_NAMESPACE}
+                        helm status ${APP_NAME} -n ${DEPLOY_NAMESPACE}
+                    '''
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            when {
+                branch 'main'
+            }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
 spec:
   serviceAccount: jenkins
   containers:
   - name: kubectl
     image: bitnami/kubectl:latest
-    command:
-    - cat
+    command: [cat]
     tty: true
 """
                 }
@@ -137,78 +300,34 @@ spec:
             steps {
                 container('kubectl') {
                     sh '''
-                        echo "Deploying to Kubernetes namespace: ${DEPLOY_NAMESPACE}..."
+                        echo "Verifying deployment..."
                         
-                        # Check if we have access to the namespace
-                        kubectl auth can-i get deployments -n ${DEPLOY_NAMESPACE} || \
-                            (echo "ERROR: No permission to access namespace ${DEPLOY_NAMESPACE}" && exit 1)
+                        kubectl get all -n ${DEPLOY_NAMESPACE} -l app.kubernetes.io/name=${APP_NAME}
                         
-                        # Update deployment with new image
-                        kubectl set image deployment/${APP_NAME} \
-                            ${APP_NAME}=${DOCKER_IMAGE}:${IMAGE_TAG} \
-                            -n ${DEPLOY_NAMESPACE}
+                        # Wait for rollout
+                        kubectl rollout status deployment/${APP_NAME} -n ${DEPLOY_NAMESPACE} --timeout=5m || true
                         
-                        # Wait for rollout to complete
-                        kubectl rollout status deployment/${APP_NAME} -n ${DEPLOY_NAMESPACE} --timeout=5m
+                        # Get pod logs
+                        echo "=== Recent Pod Logs ==="
+                        kubectl logs -n ${DEPLOY_NAMESPACE} -l app.kubernetes.io/name=${APP_NAME} --tail=50 || true
                         
-                        echo "Deployment completed successfully!"
-                        kubectl get pods -n ${DEPLOY_NAMESPACE} -l app=${APP_NAME}
+                        echo "✅ Verification complete!"
                     '''
                 }
             }
-        }*/
-        
-        /*stage('Smoke Tests') {
-            when {
-                branch 'main'
-            }
-            agent {
-                kubernetes {
-                    yaml """
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    jenkins: agent
-spec:
-  serviceAccount: jenkins
-  containers:
-  - name: curl
-    image: curlimages/curl:latest
-    command:
-    - cat
-    tty: true
-"""
-                }
-            }
-            steps {
-                container('curl') {
-                    sh '''
-                        echo "Running smoke tests..."
-                        
-                        # Wait a bit for service to be ready
-                        sleep 10
-                        
-                        # Basic health check using the service in the deployment namespace
-                        curl -f http://${APP_NAME}.${DEPLOY_NAMESPACE}.svc.cluster.local:8080/health || exit 1
-                        
-                        echo "Smoke tests passed!"
-                    '''
-                }
-            }
-        }*/
+        }
     }
     
     post {
         success {
-            echo "Pipeline completed successfully! 🎉"
-            echo "Image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+            echo "✅ Pipeline completed successfully!"
+            echo "Image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
         }
         failure {
-            echo "Pipeline failed! ❌"
+            echo "❌ Pipeline failed!"
         }
         always {
-            cleanWs()
+            echo "Pipeline execution finished."
         }
     }
 }
