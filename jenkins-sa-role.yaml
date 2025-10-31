@@ -8,4 +8,4 @@ rules:
   verbs: ["get", "list", "create", "update", "patch"]
 - apiGroups: [""]
   resources: ["pods", "services"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get", "list", "watch", "create"]
