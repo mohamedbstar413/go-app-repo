@@ -232,7 +232,7 @@ EOF
             }
         }
 
-        stage('Deploy Helm Chart') {
+        /*stage('Deploy Helm Chart') {
             when {
                 branch 'main'
             }
@@ -315,7 +315,7 @@ spec:
                     '''
                 }
             }
-        }
+        }*/
     }
     
     post {
