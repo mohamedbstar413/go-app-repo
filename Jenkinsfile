@@ -122,6 +122,9 @@ EOF
                                     --cache=true \
                                     --compressed-caching=false \
                                     --verbosity=info
+                                    -snapshot-mode=redo \
+                                    --use-new-run \
+                                    --push-retry 3 \
                                 
                                 echo "✅ Image pushed successfully!"
                                 echo "  ${dockerImage}:${IMAGE_TAG}"
