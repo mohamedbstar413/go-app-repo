@@ -11,8 +11,46 @@ pipeline{
                 spec:
                     serviceAccountName: jenkins
                     containers:
-                        - name: git
+                        -   name: git
+                            image: alpine/git:latest
+                            command:
+                                - sleep
+                            args:
+                                - 99d
+                            tty: true
+                        -   name: kaniko
+                            image: gcr.io/kaniko-project/executor:debug
+                            command:
+                                - /busybox/sleep
+                            args:
+                                - 99999
+                            volumeMounts:
+                                - name: kaniko-secret
+                                  mountPath: /kaniko/.docker
+                            tty: true
+                        -   name: helm
+                            image: dtzar/helm-kubectl:latest
+                            command:
+                                - sleep
+                            args:
+                                - 99d
+                            tty: true
+                    volumes:
+                        - name: kaniko-secret
+                          
+
             '''
         }
+    }
+    environment{
+        GIT_REPO="https://github.com/mohamedbstar413/go-app-repo.git"
+        GIT_BRANCH="main"
+        DOCKER_IMAGE="bstar999/senior-go"
+        DOCKER_TAG="${env.BUILD_NUMBER}"
+        HELM_RELEASE = 'senior-go-app'  # Helm release name
+        HELM_CHART_PATH = './senior-go-chart'
+    }
+    stages{
+
     }
 }
