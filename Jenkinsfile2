@@ -138,7 +138,7 @@ pipeline {
             steps{
                 container('mailer') {
             withCredentials([usernamePassword(credentialsId: 'gmail', usernameVariable: 'GMAIL_USER', passwordVariable: 'GMAIL_PASS')]) {
-                sh '''
+                sh """
                     apk add --no-cache curl ca-certificates
                     FROM="mabdelsattar413@gmail.com"
                     TO="mabdelsattar413@gmail.com"
@@ -152,7 +152,7 @@ pipeline {
                          --mail-rcpt "$TO" \
                          --upload-file <(echo -e "From: $FROM\\nTo: $TO\\nSubject: $SUBJECT\\n\\n$BODY") \
                          --user "$GMAIL_USER:$GMAIL_PASS"
-                '''
+                """
             }
         }
             }
