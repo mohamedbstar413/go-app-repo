@@ -34,6 +34,13 @@ pipeline {
                                 - 99999
 
                             tty: true
+                        -   name: tester
+                            image: ubuntu
+                            command:
+                                - sleep
+                            args:
+                                - 99d
+                            tty: true
             '''
         }
     }
@@ -93,7 +100,7 @@ pipeline {
                         helm create $HELM_CHART_PATH
                         rm -rf $HELM_CHART_PATH/templates/*
 
-                        cp k8s/* $HELM_CHART_PATH/
+                        cp k8s/* $HELM_CHART_PATH/templates/
                         echo 'Created Helm Chart Successfully!'
                     """
                 }
@@ -106,6 +113,13 @@ pipeline {
                         helm upgrade --install $HELM_RELEASE_NAME $HELM_CHART_PATH \
                         --namespace $K8S_NAMESPACE
                     """
+                }
+            }
+        }
+        stage('Smkoe test'){
+            steps{
+                container(){
+
                 }
             }
         }
