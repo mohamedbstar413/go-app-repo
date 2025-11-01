@@ -237,9 +237,7 @@ EOF
         }
 
         stage('Deploy Helm Chart') {
-            when {
-                branch 'main'
-            }
+            
             agent {
                 kubernetes {
                     yaml """
