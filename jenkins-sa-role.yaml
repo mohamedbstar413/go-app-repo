@@ -4,7 +4,7 @@ metadata:
   name: jenkins-deployer
 rules:
 - apiGroups: ["apps"]
-  resources: ["deployments"]
+  resources: ["deployments", "configmaps"]
   verbs: ["get", "list", "create", "update", "patch"]
 - apiGroups: [""]
   resources: ["pods", "services"]

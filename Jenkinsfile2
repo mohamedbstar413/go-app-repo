@@ -1,7 +1,18 @@
 pipeline{
     agent{
         kubernetes{
-            
+            yaml '''
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                    name: jenkins-agent-pod
+                    labels:
+                        app: jenkins-agent
+                spec:
+                    serviceAccountName: jenkins
+                    containers:
+                        - name: git
+            '''
         }
     }
 }
