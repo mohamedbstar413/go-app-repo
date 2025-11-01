@@ -129,7 +129,7 @@ pipeline {
                     sh """
                         apt update -y
                         apt install -y curl
-                        curl -Iv 'https://nginx-svc.default.svc.cluster.local'
+                        curl -k-Iv 'https://nginx-svc.default.svc.cluster.local'
                     """
                 }
             }
