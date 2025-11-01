@@ -44,7 +44,7 @@ pipeline {
                         -   name: mailer
                             image: alpine:latest
                             command: 
-                                - sleep' 
+                                - sleep 
                             args:
                                 - 99d
                             tty: true
