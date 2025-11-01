@@ -134,29 +134,33 @@ pipeline {
                 }
             }
         }
-        stage('Send Email'){
-            steps{
-                container('mailer') {
+        stage('Send Email') {
+    steps {
+        container('mailer') {
             withCredentials([usernamePassword(credentialsId: 'gmail', usernameVariable: 'GMAIL_USER', passwordVariable: 'GMAIL_PASS')]) {
                 sh """
                     apk add --no-cache curl ca-certificates
+
                     FROM="mabdelsattar413@gmail.com"
                     TO="mabdelsattar413@gmail.com"
-                    SUBJECT="Build ${BUILD_NUMBER} completed"
-                    BODY="Job: ${JOB_NAME}\\nBuild URL: ${BUILD_URL}\\nStatus: ${currentBuild.currentResult}"
+                    SUBJECT="Build \$BUILD_NUMBER completed"
+                    BODY="Job: \$JOB_NAME\\nBuild URL: \$BUILD_URL\\nStatus: \$currentBuild.currentResult"
 
                     echo "Sending email..."
+                    echo -e "From: \$FROM\\nTo: \$TO\\nSubject: \$SUBJECT\\n\\n\$BODY" > /tmp/email.txt
+
                     curl --url "smtps://smtp.gmail.com:465" \
                          --ssl-reqd \
-                         --mail-from "$FROM" \
-                         --mail-rcpt "$TO" \
-                         --upload-file <(echo -e "From: $FROM\\nTo: $TO\\nSubject: $SUBJECT\\n\\n$BODY") \
-                         --user "$GMAIL_USER:$GMAIL_PASS"
+                         --mail-from "\$FROM" \
+                         --mail-rcpt "\$TO" \
+                         --upload-file /tmp/email.txt \
+                         --user "\$GMAIL_USER:\$GMAIL_PASS" \
+                         --verbose
                 """
             }
         }
-            }
-        }
+    }
+}
 
     }
 }
