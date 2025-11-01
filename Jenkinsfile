@@ -121,8 +121,8 @@ EOF
                                     --destination ${dockerImage}:latest \
                                     --cache=true \
                                     --compressed-caching=false \
-                                    --verbosity=info
-                                    -snapshot-mode=redo \
+                                    --verbosity=info \
+                                    --snapshot-mode=redo \
                                     --use-new-run \
                                     --push-retry 3 \
                                 
