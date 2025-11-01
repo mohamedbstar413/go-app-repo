@@ -320,12 +320,12 @@ spec:
                 }
             }
         }
-        stage('Smoke Test') {
-      agent {
-        kubernetes {
-          label 'smoke-test'
-          defaultContainer 'curl'
-          yaml """
+stage('Smoke Test') {
+  agent {
+    kubernetes {
+      label 'smoke-test'
+      defaultContainer 'curl'
+      yaml """
 apiVersion: v1
 kind: Pod
 metadata:
@@ -334,30 +334,33 @@ metadata:
 spec:
   containers:
   - name: curl
-    image: curlimages/curl:8.10.1
+    image: alpine:3.20
     command:
-      - cat
+      - sleep
+      - infinity
     tty: true
   restartPolicy: Never
 """
-        }
-      }
-
-      steps {
-        container('curl') {
-          echo 'Running smoke test inside container...'
-          sh '''
-            set -e
-            echo "Checking service health..."
-            if ! curl -fs https://nginx-svc.default.svc.cluster.local/; then
-              echo "Smoke test failed!"
-              exit 1
-            fi
-            echo "Smoke test passed!"
-          '''
-        }
-      }
     }
+  }
+
+  steps {
+    container('curl') {
+      echo 'Running smoke test inside container...'
+      sh '''
+        set -e
+        apk add --no-cache curl
+        echo "Checking service health..."
+        if ! curl -fs https://nginx-svc.default.svc.cluster.local/; then
+          echo "Smoke test failed!"
+          exit 1
+        fi
+        echo "Smoke test passed!"
+      '''
+    }
+  }
+}
+
     stage('Send Email') {
       agent {
         kubernetes {
