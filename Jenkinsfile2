@@ -18,7 +18,7 @@ pipeline {
                             args:
                                 - 99d
                             tty: true
-                        
+
                         -   name: helm
                             image: dtzar/helm-kubectl:latest
                             command:
@@ -32,7 +32,7 @@ pipeline {
                                 - /busybox/sleep
                             args:
                                 - 99999
-                                    
+
                             tty: true
             '''
         }
@@ -55,39 +55,39 @@ pipeline {
                 }
             }
         }
-        stage('Build docker image and push to docker hub'){
-            steps{
+        stage('Build docker image and push to docker hub') {
+            steps {
                 withCredentials([usernamePassword(
                             credentialsId: 'dockerhub',
                             usernameVariable: 'DOCKER_USER',
                             passwordVariable: 'DOCKER_PASS'
-                        )])
-                
-                container('kaniko'){
-                    sh """
+                        )]) {
+                            container('kaniko') {
+                        sh """
                         cat > /kaniko/.docker/config.json <<EOF
                         {
                             "auths": {
                                         "https://index.docker.io/v1/": {
                                             "auth": "\$(echo -n $DOCKER_USER:$DOCKER_PASS | base64 | tr '\n')"
                                         }
-                                    }
+                            }
                         }
                         EOF
                         /kaniko/executor \
-                            --context= `pwd` \
+                            --context `pwd` \
                             --dockerfile Dockerfile \
                             --destination $DOCKER_IMAGE:$DOCKER_TAG \
-                            --cache true \
+                            --cache=true \
                             --verbosity=info \
                             --snapshot-mode=redo
                     """
-                }
+                            }
+                        }
             }
         }
-        stage('Create helm chart'){
-            steps{
-                container('helm'){
+        stage('Create helm chart') {
+            steps {
+                container('helm') {
                     sh """
                         echo 'Creating Helm Chart...'
                         helm create $HELM_CHART_PATH
@@ -99,9 +99,9 @@ pipeline {
                 }
             }
         }
-        stage('Deploy Helm Chart'){
-            steps{
-                container('helm'){
+        stage('Deploy Helm Chart') {
+            steps {
+                container('helm') {
                     sh """
                         helm upgrade --install $HELM_RELEASE_NAME $HELM_CHART_PATH \
                         --namespace $K8S_NAMESPACE
