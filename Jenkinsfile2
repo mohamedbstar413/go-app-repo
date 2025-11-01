@@ -42,7 +42,7 @@ pipeline {
         GIT_BRANCH = 'main'
         DOCKER_IMAGE = 'bstar999/senior-go'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
-        HELM_RELEASE = 'senior-go-app'
+        HELM_RELEASE_NAME = 'senior-go-app'
         HELM_CHART_PATH = './senior-go-chart'
         K8S_NAMESPACE = 'default'
         SMOKE_TEST_URL = 'https://nginx-svc.default.svc.cluster.local'
@@ -81,6 +81,30 @@ pipeline {
                             --cache true \
                             --verbosity=info \
                             --snapshot-mode=redo
+                    """
+                }
+            }
+        }
+        stage('Create helm chart'){
+            steps{
+                container('helm'){
+                    sh """
+                        echo 'Creating Helm Chart...'
+                        helm create $HELM_CHART_PATH
+                        rm -rf $HELM_CHART_PATH/templates/*
+
+                        cp k8s/* $HELM_CHART_PATH/
+                        echo 'Created Helm Chart Successfully!'
+                    """
+                }
+            }
+        }
+        stage('Deploy Helm Chart'){
+            steps{
+                container('helm'){
+                    sh """
+                        helm upgrade --install $HELM_RELEASE_NAME $HELM_CHART_PATH \
+                        --namespace $K8S_NAMESPACE
                     """
                 }
             }
