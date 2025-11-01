@@ -117,7 +117,6 @@ EOF
                                 /kaniko/executor \
                                     --context ${WORKSPACE} \
                                     --dockerfile ${WORKSPACE}/Dockerfile \
-                                    --destination ${dockerImage}:${IMAGE_TAG} \
                                     --destination ${dockerImage}:latest \
                                     --cache=true \
                                     --compressed-caching=false \
