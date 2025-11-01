@@ -118,10 +118,17 @@ pipeline {
         }
         stage('Smkoe test'){
             steps{
-                container(){
-
+                container("tester"){
+                    sh """
+                        apt update -y
+                        apt install -y curl
+                        res=\$(curl -I 'https://nginx-svc.default.svc.cluster.local')
+                        echo 'Result of curl is: '
+                        echo $res 
+                    """
                 }
             }
         }
+
     }
 }
