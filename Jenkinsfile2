@@ -143,7 +143,7 @@ pipeline {
                     FROM="mabdelsattar413@gmail.com"
                     TO="mabdelsattar413@gmail.com"
                     SUBJECT="Build ${BUILD_NUMBER} completed"
-                    BODY="Job: ${JOB_NAME}\nBuild URL: ${BUILD_URL}\nStatus: ${currentBuild.currentResult}"
+                    BODY="Job: ${JOB_NAME}\\nBuild URL: ${BUILD_URL}\\nStatus: ${currentBuild.currentResult}"
 
                     echo "Sending email..."
                     curl --url "smtps://smtp.gmail.com:465" \
