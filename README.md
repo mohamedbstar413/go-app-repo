@@ -1,282 +1,408 @@
-# 🚀 Kubernetes Full-Stack Application
+# 🚀 Kubernetes CI/CD Pipeline with Jenkins
 
-A production-ready full-stack application deployed on Kubernetes, featuring a Go backend, MySQL database, and Nginx reverse proxy with TLS termination.
+A complete CI/CD solution for deploying Go applications to Kubernetes using Jenkins, Helm, and Kaniko.
+
+---
 
 ## 📋 Table of Contents
 
+- [Overview](#overview)
 - [Architecture](#architecture)
-- [Components](#components)
 - [Prerequisites](#prerequisites)
-- [Installation](#installation)
+- [Project Structure](#project-structure)
+- [Infrastructure Components](#infrastructure-components)
+- [Pipeline Stages](#pipeline-stages)
+- [Setup Instructions](#setup-instructions)
 - [Configuration](#configuration)
-- [Usage](#usage)
 - [Security](#security)
 - [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
+
+---
+
+## 🎯 Overview
+
+This project implements a production-ready CI/CD pipeline that automates the build, test, and deployment of a Go application to Kubernetes. The pipeline leverages Jenkins for orchestration, Kaniko for Docker image building, and Helm for Kubernetes deployments.
+
+### Key Features
+
+✅ **Automated Docker Builds** - Kaniko-based containerless builds  
+✅ **Helm Chart Deployment** - Automated chart creation and deployment  
+✅ **Smoke Testing** - Post-deployment health checks  
+✅ **Email Notifications** - Build status notifications via Gmail  
+✅ **Kubernetes Native** - Jenkins agents run as Kubernetes pods  
+✅ **Secure Secrets Management** - Kubernetes Secrets for sensitive data  
+
+---
 
 ## 🏗️ Architecture
 
-This application follows a microservices architecture with the following components:
-
 ```
 ┌─────────────────┐
-│  Nginx Proxy    │ (TLS Termination, Port 8080)
-│  (nginx-proxy)  │
+│   GitHub Repo   │
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
-│   Go Backend    │ (3 Replicas, Port 8000)
-│  (back-deploy)  │
+│  Jenkins Agent  │◄──── Kubernetes Pod
+│   (Dynamic)     │
 └────────┬────────┘
          │
-         ▼
-┌─────────────────┐
-│  MySQL Database │ (StatefulSet, Port 3306)
-│    (db-ss)      │
-└─────────────────┘
+    ┌────┴────┬─────────┬──────────┐
+    ▼         ▼         ▼          ▼
+┌───────┐ ┌───────┐ ┌───────┐ ┌────────┐
+│  Git  │ │Kaniko │ │ Helm  │ │Tester  │
+└───┬───┘ └───┬───┘ └───┬───┘ └───┬────┘
+    │         │         │         │
+    └─────────┴─────────┴─────────┘
+                 │
+                 ▼
+         ┌───────────────┐
+         │  Kubernetes   │
+         │   Cluster     │
+         └───────────────┘
+              │
+    ┌─────────┼─────────┐
+    ▼         ▼         ▼
+┌────────┐ ┌──────┐ ┌────────┐
+│ Nginx  │ │MySQL │ │Backend │
+│ Proxy  │ │  DB  │ │  App   │
+└────────┘ └──────┘ └────────┘
 ```
 
-## 🧩 Components
-
-### Backend Service
-- **Image**: `bstar999/senior-go`
-- **Replicas**: 3 (for high availability)
-- **Port**: 8000
-- **Features**: 
-  - Horizontal scaling
-  - Secret-based database authentication
-  - Health checks ready
-
-### Database
-- **Engine**: MySQL 8.0
-- **Type**: StatefulSet (persistent storage)
-- **Port**: 3306
-- **Storage**: HostPath volume at `/mysql-data`
-- **Features**:
-  - Persistent data storage
-  - ConfigMap-based configuration
-  - Secret-based authentication
-
-### Nginx Reverse Proxy
-- **Image**: nginx
-- **Port**: 8080
-- **Features**:
-  - TLS/SSL termination
-  - Custom configuration support
-  - Self-signed certificates included
+---
 
 ## 📦 Prerequisites
 
-- Kubernetes cluster (v1.19+)
-- kubectl configured and connected to your cluster
-- Sufficient cluster resources:
-  - 3+ CPUs
-  - 4GB+ RAM
-  - Storage for MySQL data
+### Required Tools
 
-## 🚀 Installation
+- **Kubernetes Cluster** (v1.20+)
+- **Jenkins** (v2.300+) with Kubernetes plugin
+- **Helm** (v3.0+)
+- **Docker Hub Account**
+- **Gmail Account** (for notifications)
 
-### 1. Clone the Repository
+### Required Credentials
 
-```bash
-git clone <your-repo-url>
-cd <your-repo-name>
+Configure the following credentials in Jenkins:
+
+| Credential ID | Type | Usage |
+|--------------|------|-------|
+| `dockerhub` | Username/Password | Docker Hub authentication |
+| `gmail` | Username/Password | Email notifications |
+
+---
+
+## 📁 Project Structure
+
+```
+.
+├── k8s/
+│   ├── jenkins-pv.yaml           # Persistent Volume
+│   ├── jenkins-pvc.yaml          # Persistent Volume Claim
+│   ├── nginx-proxy.yaml          # Nginx reverse proxy
+│   ├── nginx-svc.yaml            # Nginx service
+│   ├── nginx-tls-secret.yaml     # TLS certificates
+│   ├── back-deploy.yaml          # Backend deployment
+│   ├── back-svc.yaml             # Backend service
+│   ├── db-ss.yaml                # MySQL StatefulSet
+│   ├── db-svc.yaml               # MySQL service
+│   ├── db-config.yaml            # Database ConfigMap
+│   ├── db-secret.yaml            # Database Secret
+│   ├── jenkins-rbac.yaml         # Jenkins RBAC
+│   └── jenkins-clusterrole.yaml  # Jenkins ClusterRole
+│
+├── helm_test/                     # Helm chart template
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
+│       ├── deployment.yaml
+│       ├── service.yaml
+│       ├── ingress.yaml
+│       └── serviceaccount.yaml
+│
+└── Jenkinsfile                    # Pipeline definition
 ```
 
-### 2. Create Required Directories on Nodes
+---
 
-```bash
-# On each Kubernetes node, create these directories:
-sudo mkdir -p /mysql-data
-sudo mkdir -p /nginx-conf
-sudo mkdir -p /nginx-index
-sudo mkdir -p /root/secret
+## 🔧 Infrastructure Components
+
+### 1. **Jenkins Persistent Storage**
+
+```yaml
+Storage: 10Gi
+Access Mode: ReadWriteOnce
+Path: /mnt/jenkins-data
 ```
 
-### 3. Deploy Database Layer
+### 2. **Nginx Reverse Proxy**
 
-```bash
-# Apply database secret
-kubectl apply -f db-secret.yaml
+- **Image**: `nginx:latest`
+- **Port**: 8080 → 443 (HTTPS)
+- **TLS**: Configured with self-signed certificates
+- **Purpose**: SSL termination and routing
 
-# Apply database configuration
-kubectl apply -f db-config.yaml
+### 3. **Backend Application**
 
-# Deploy StatefulSet and Service
-kubectl apply -f db-statefulset.yaml
-kubectl apply -f db-service.yaml
+- **Image**: `bstar999/senior-go`
+- **Replicas**: 3
+- **Port**: 8000
+- **Secrets**: Database password mounted at `/run/secrets/db-password`
+
+### 4. **MySQL Database**
+
+- **Image**: `mysql:8.0`
+- **Type**: StatefulSet
+- **Port**: 3306
+- **Storage**: HostPath volume at `/mysql-data`
+- **Credentials**: Base64 encoded (root password: `admin123`)
+
+---
+
+## 🔄 Pipeline Stages
+
+### Stage 1: **Checkout**
+```groovy
+Container: alpine/git
+Action: Clone repository from GitHub
 ```
 
-### 4. Deploy Backend Layer
-
-```bash
-# Ensure database password secret exists on host
-echo -n "admin123" > /root/secret/db-password
-
-# Deploy backend
-kubectl apply -f back-deployment.yaml
-kubectl apply -f back-service.yaml
+### Stage 2: **Build & Push Docker Image**
+```groovy
+Container: kaniko
+Action: Build Docker image and push to Docker Hub
+Tag: Build number (e.g., bstar999/senior-go:42)
 ```
 
-### 5. Deploy Nginx Proxy
+### Stage 3: **Create Helm Chart**
+```groovy
+Container: helm-kubectl
+Action: Generate Helm chart and copy K8s manifests
+```
+
+### Stage 4: **Deploy Helm Chart**
+```groovy
+Container: helm-kubectl
+Action: Deploy/upgrade application to Kubernetes
+Namespace: default
+```
+
+### Stage 5: **Smoke Test**
+```groovy
+Container: ubuntu
+Action: Verify HTTPS endpoint availability
+URL: https://nginx-svc.default.svc.cluster.local
+```
+
+### Stage 6: **Send Email Notification**
+```groovy
+Container: alpine
+Action: Send build status email via Gmail SMTP
+```
+
+---
+
+## 🚀 Setup Instructions
+
+### 1. **Deploy Infrastructure**
 
 ```bash
-# Apply TLS certificates
-kubectl apply -f nginx-tls-secret.yaml
+# Create namespace
+kubectl create namespace jenkins
+
+# Deploy Jenkins RBAC
+kubectl apply -f k8s/jenkins-clusterrole.yaml
+kubectl apply -f k8s/jenkins-rbac.yaml
+
+# Deploy storage
+kubectl apply -f k8s/jenkins-pv.yaml
+kubectl apply -f k8s/jenkins-pvc.yaml
+
+# Deploy application components
+kubectl apply -f k8s/db-secret.yaml
+kubectl apply -f k8s/db-config.yaml
+kubectl apply -f k8s/db-ss.yaml
+kubectl apply -f k8s/db-svc.yaml
+kubectl apply -f k8s/back-deploy.yaml
+kubectl apply -f k8s/back-svc.yaml
 
 # Deploy Nginx proxy
-kubectl apply -f nginx-proxy.yaml
+kubectl apply -f k8s/nginx-tls-secret.yaml
+kubectl apply -f k8s/nginx-proxy.yaml
+kubectl apply -f k8s/nginx-svc.yaml
 ```
+
+### 2. **Configure Jenkins**
+
+1. Install required plugins:
+   - Kubernetes Plugin
+   - Pipeline Plugin
+   - Git Plugin
+   - Credentials Binding Plugin
+
+2. Add credentials:
+   ```
+   Manage Jenkins → Credentials → System → Global credentials
+   ```
+
+3. Create pipeline job:
+   ```
+   New Item → Pipeline → Pipeline script from SCM
+   ```
+
+### 3. **Run Pipeline**
+
+```bash
+# Trigger build
+Build Now
+
+# Monitor logs
+Jenkins → Job → Console Output
+```
+
+---
 
 ## ⚙️ Configuration
 
-### Database Configuration
+### Environment Variables
 
-The database is configured via ConfigMap with the following settings:
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GIT_REPO` | GitHub repository URL | `https://github.com/mohamedbstar413/go-app-repo.git` |
+| `GIT_BRANCH` | Branch to build | `main` |
+| `DOCKER_IMAGE` | Docker image name | `bstar999/senior-go` |
+| `DOCKER_TAG` | Image tag | `${BUILD_NUMBER}` |
+| `HELM_RELEASE_NAME` | Helm release name | `senior-go-app` |
+| `K8S_NAMESPACE` | Target namespace | `default` |
+| `SMOKE_TEST_URL` | Health check URL | `https://nginx-svc.default.svc.cluster.local` |
 
-- **Root Host**: `%` (allows connections from any host)
-- **Database Name**: `example`
-- **Root Password**: Stored in Secret (base64 encoded: `admin123`)
+### Customizing Helm Values
 
-### Backend Configuration
+Edit `helm_test/values.yaml`:
 
-The backend connects to the database using:
-- Database host: `db` (internal DNS)
-- Port: `3306`
-- Credentials: Mounted from `/root/secret/db-password`
+```yaml
+replicaCount: 3
+image:
+  repository: bstar999/senior-go
+  tag: "latest"
+service:
+  type: ClusterIP
+  port: 80
+```
 
-### Nginx Configuration
-
-Custom Nginx configuration can be placed at:
-- **Config**: `/nginx-conf/nginx.conf`
-- **Index**: `/nginx-index/index.html`
-- **Certificates**: Auto-mounted from Secret
+---
 
 ## 🔐 Security
 
 ### Secrets Management
 
-This project uses Kubernetes Secrets for sensitive data:
-
-1. **Database Root Password** (`db-secret`)
-   ```yaml
-   MYSQL_ROOT_PASSWORD: YWRtaW4xMjM= # base64 encoded
-   ```
-
-2. **TLS Certificates** (`nginx-tls`)
-   - Self-signed certificates included
-   - Valid for: `localhost`
-   - Replace with proper certificates for production
-
-### Security Recommendations
-
-- [ ] Replace default MySQL root password
-- [ ] Use proper TLS certificates from a CA
-- [ ] Implement network policies
-- [ ] Enable Pod Security Standards
-- [ ] Use Secrets store CSI driver for production
-- [ ] Implement RBAC policies
-- [ ] Regular security scanning of container images
-
-## 🎯 Usage
-
-### Accessing the Application
-
+**Database Secret** (Base64 encoded):
 ```bash
-# Get Nginx proxy pod name
-kubectl get pods | grep nginx-proxy
-
-# Port forward to access locally
-kubectl port-forward pod/nginx-proxy 8080:8080
-
-# Access via browser (accept self-signed certificate warning)
-https://localhost:8080
+echo -n "admin123" | base64
+# Output: YWRtaW4xMjM=
 ```
 
-### Scaling the Backend
+**TLS Certificates**:
+- Self-signed certificates for development
+- For production, use cert-manager or valid CA certificates
 
-```bash
-# Scale backend replicas
-kubectl scale deployment back-deploy --replicas=5
+### RBAC Configuration
 
-# Verify scaling
-kubectl get pods -l app=back
+Jenkins service account has cluster-wide permissions:
+```yaml
+apiGroups: ["*"]
+resources: ["*"]
+verbs: ["*"]
 ```
 
-### Viewing Logs
+⚠️ **Production Recommendation**: Restrict permissions to specific namespaces and resources.
 
-```bash
-# Backend logs
-kubectl logs -l app=back --tail=100 -f
-
-# Database logs
-kubectl logs -l app=db --tail=100 -f
-
-# Nginx logs
-kubectl logs nginx-proxy --tail=100 -f
-```
-
-### Database Access
-
-```bash
-# Connect to MySQL
-kubectl exec -it db-ss-0 -- mysql -u root -padmin123 example
-
-# Create a backup
-kubectl exec -it db-ss-0 -- mysqldump -u root -padmin123 example > backup.sql
-```
+---
 
 ## 🐛 Troubleshooting
 
-### Backend Can't Connect to Database
+### Common Issues
 
+**1. Kaniko Build Fails**
 ```bash
-# Check if database is ready
-kubectl get pods -l app=db
+# Check Docker Hub credentials
+kubectl get secret dockerhub -n jenkins -o yaml
 
-# Check database service
-kubectl get svc db
-
-# Verify secret mount
-kubectl exec -it <backend-pod> -- cat /run/secrets/db-password
+# Verify Kaniko logs
+kubectl logs -n jenkins <kaniko-pod>
 ```
 
-### Nginx Not Serving Traffic
-
+**2. Helm Deployment Fails**
 ```bash
-# Check Nginx configuration
-kubectl exec -it nginx-proxy -- nginx -t
+# Check Helm release status
+helm list -n default
 
-# Verify certificate mount
-kubectl exec -it nginx-proxy -- ls -la /etc/nginx/ssl/
+# Debug deployment
+kubectl describe deployment senior-go-app -n default
 ```
 
-### Persistent Data Issues
+**3. Smoke Test Fails**
+```bash
+# Verify Nginx service
+kubectl get svc nginx-svc -n default
+
+# Check certificate
+kubectl get secret nginx-tls -n default
+
+# Test connectivity
+kubectl run test --rm -it --image=busybox -- wget -O- https://nginx-svc.default.svc.cluster.local
+```
+
+**4. Email Notification Fails**
+```bash
+# Verify Gmail app password (not regular password)
+# Enable "Less secure app access" or use App Password
+```
+
+### Logs and Debugging
 
 ```bash
-# Check volume mounts
-kubectl describe pod db-ss-0
+# Jenkins agent pod logs
+kubectl logs -n jenkins -l app=jenkins-agent
 
-# Verify host path exists
-# On the node running the pod:
-ls -la /mysql-data
+# Application logs
+kubectl logs -n default -l app=back
+
+# Database logs
+kubectl logs -n default -l app=db
 ```
+
+---
 
 ## 📊 Monitoring
 
-### Health Checks
+### Check Deployment Status
 
 ```bash
-# Check all pods status
-kubectl get pods
+# Pods
+kubectl get pods -n default
 
-# Check services
-kubectl get svc
+# Services
+kubectl get svc -n default
 
-# View events
-kubectl get events --sort-by='.lastTimestamp'
+# Helm releases
+helm list -n default
+
+# Persistent volumes
+kubectl get pv,pvc
 ```
+
+### Access Application
+
+```bash
+# Port forward to Nginx
+kubectl port-forward svc/nginx-svc 8443:443 -n default
+
+# Access in browser
+https://localhost:8443
+```
+
+---
 
 ## 🤝 Contributing
 
@@ -286,13 +412,29 @@ kubectl get events --sort-by='.lastTimestamp'
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+---
 
-## 🙏 Acknowledgments
+## 📝 License
 
-- Built with Kubernetes
-- Backend powered by Go
-- Database: MySQL 8.0
-- Reverse proxy: Nginx
+This project is licensed under the MIT License.
 
 ---
 
+## 👤 Author
+
+**Mohamed Abdelsattar**
+- GitHub: [@mohamedbstar413](https://github.com/mohamedbstar413)
+- Email: mabdelsattar413@gmail.com
+
+---
+
+## 🙏 Acknowledgments
+
+- Jenkins Kubernetes Plugin
+- Kaniko Project
+- Helm Community
+- Kubernetes Documentation
+
+---
+
+**Built with ❤️ using Kubernetes, Jenkins, and Helm**
