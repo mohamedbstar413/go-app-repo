@@ -428,12 +428,7 @@ This project is licensed under the MIT License.
 
 ---
 
-## 🙏 Acknowledgments
 
-- Jenkins Kubernetes Plugin
-- Kaniko Project
-- Helm Community
-- Kubernetes Documentation
 
 ---
 
